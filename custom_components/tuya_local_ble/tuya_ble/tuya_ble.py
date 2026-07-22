@@ -1189,6 +1189,65 @@ class TuyaBLEDevice:
         parsed_ranges: list[tuple[int, int]] = []
 
         while len(data) - pos >= 5:
+            # K13 / some TuyaOS FD50 status reports:
+            #   00000000 <tag> 80 00 <dp_id> <dp_type> <len:2> <value:len>
+            # Examples:
+            #   ...088000080200040000005c -> DP8 value 92
+            #   ...0880002f01000100       -> DP47 bool 0 (locked)
+            #   ...2180001f04000101       -> DP31 enum 1
+            if (
+                len(data) - pos >= 11
+                and data[pos:pos + 4] == b"\x00\x00\x00\x00"
+                and data[pos + 5:pos + 7] == b"\x80\x00"
+            ):
+                dp_id = data[pos + 7]
+                try:
+                    dp_type = TuyaBLEDataPointType(data[pos + 8])
+                except ValueError:
+                    pos += 1
+                    continue
+                data_len = int.from_bytes(data[pos + 9:pos + 11], "big")
+                value_pos = pos + 11
+                next_pos = value_pos + data_len
+                if 1 <= data_len <= len(data) - value_pos:
+                    raw_value = data[value_pos:next_pos]
+                    match dp_type:
+                        case (
+                            TuyaBLEDataPointType.DT_RAW
+                            | TuyaBLEDataPointType.DT_BITMAP
+                        ):
+                            value = raw_value
+                        case TuyaBLEDataPointType.DT_BOOL:
+                            value = int.from_bytes(raw_value, "big") != 0
+                        case (
+                            TuyaBLEDataPointType.DT_VALUE
+                            | TuyaBLEDataPointType.DT_ENUM
+                        ):
+                            value = int.from_bytes(raw_value, "big", signed=True)
+                        case TuyaBLEDataPointType.DT_STRING:
+                            value = raw_value.decode()
+                        case _:
+                            pos += 1
+                            continue
+                    _LOGGER.debug(
+                        "%s: Received TuyaOS FD50 status datapoint, id: %s, type: %s: value: %s",
+                        self.address,
+                        dp_id,
+                        dp_type.name,
+                        value,
+                    )
+                    self._datapoints._update_from_device(
+                        dp_id,
+                        time.time(),
+                        0,
+                        dp_type,
+                        value,
+                    )
+                    datapoints.append(self._datapoints[dp_id])
+                    parsed_ranges.append((pos, next_pos))
+                    pos = next_pos
+                    continue
+
             op = data[pos]
             dp_id = data[pos + 1]
             data_len = int.from_bytes(data[pos + 2:pos + 5], "big")
@@ -1572,6 +1631,37 @@ class TuyaBLEDevice:
                 )
             return
 
+        if self.product_id == "hdmgxrmp":
+            # K13 uses the same TuyaOS FD50 V4 command framing as Raykube.
+            if 46 in datapoint_ids:
+                await self._send_packet(
+                    TuyaBLECode.FUN_SENDER_DPS_V4,
+                    bytes.fromhex("00000000012e00000101"),  # manual_lock
+                    True,
+                )
+            elif 62 in datapoint_ids:
+                # Remote unlock uses the same ble_unlock_check V4 challenge
+                # framing as Raykube (command DP 0x47), not a bare DP62 bool.
+                await self._send_packet(
+                    TuyaBLECode.FUN_SENDER_DPS_V4,
+                    self._build_raykube_unlock_v4_data(),
+                    True,
+                )
+            elif set(datapoint_ids).issubset({31}):
+                for dp_id in datapoint_ids:
+                    await self._send_packet(
+                        TuyaBLECode.FUN_SENDER_DPS_V4,
+                        self._build_raykube_v4_enum_data(dp_id),
+                        True,
+                    )
+            else:
+                _LOGGER.debug(
+                    "%s: Skipping unsupported K13 datapoint write: %s",
+                    self.address,
+                    datapoint_ids,
+                )
+            return
+
         #await self._send_packet(TuyaBLECode.FUN_SENDER_DPS, data)
         await self._send_packet(TuyaBLECode.FUN_SENDER_DPS, data, False)
 
@@ -1625,6 +1715,11 @@ class TuyaBLEDevice:
             # Beep volume and lock direction use the same command-style V4
             # write framing as DP46 and must be allowed before protocol_version
             # is known on sleepy battery locks.
+            await self._send_datapoints_v3(datapoint_ids)
+            return
+        if self.product_id == "hdmgxrmp" and set(datapoint_ids).issubset({31, 46, 62}):
+            # K13 FD50 sleepy lock: allow V4 command path before protocol_version
+            # is known, same as Raykube.
             await self._send_datapoints_v3(datapoint_ids)
             return
 

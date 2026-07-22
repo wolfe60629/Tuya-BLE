@@ -100,12 +100,12 @@ mapping: dict[str, TuyaBLECategoryLockMapping] = {
             "hdmgxrmp":  # K13 jtmspro BLE lock (experimental)
             [
                 TuyaBLELockMapping(
-                    # Cloud DP map for this product does not expose classic DP6 unlock;
-                    # start with Gimdow-style motor/manual DPs. Unlock may need further work.
-                    dp_id_unlock=62,  # unlock_phone_remote (experimental)
+                    # Unlock uses Raykube-style ble_unlock_check V4 challenge.
+                    # DP62 is only the HA trigger id into that send path.
+                    dp_id_unlock=62,
                     dp_id_lock=46,  # manual_lock
                     dp_id=47,  # lock_motor_state
-                    dp_id_nop=54,  # synch_method keepalive candidate
+                    dp_id_nop=54,
                     keep_connect=False,
                     keep_connect_timer=60,
                     description=LockEntityDescription(
@@ -245,6 +245,16 @@ class TuyaBLELock(TuyaBLEEntity, LockEntity):
         if self._device.product_id == "hc7n0urm" and self._target_state == LockState.LOCKED:
             await datapoint.set_value(True)
             self._current_state = LockState.LOCKED
+            self._commanded = False
+            self._isjammed = False
+            self._update_attrs()
+            self.async_write_ha_state()
+            return
+
+        if self._device.product_id == "hdmgxrmp":
+            # FD50 V4 command path; optimistically update after send like Raykube.
+            await datapoint.set_value(True)
+            self._current_state = self._target_state
             self._commanded = False
             self._isjammed = False
             self._update_attrs()
