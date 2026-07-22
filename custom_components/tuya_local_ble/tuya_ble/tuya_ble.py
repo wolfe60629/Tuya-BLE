@@ -396,6 +396,11 @@ class TuyaBLEDevice:
             return ""
 
     @property
+    def is_tuyaos_fd50_lock(self) -> bool:
+        """True for TuyaOS locks that speak FD50 GATT (Raykube, K13, etc.)."""
+        return self.product_id in ("hc7n0urm", "hdmgxrmp")
+
+    @property
     def product_model(self) -> str:
         if self._device_info is not None:
             return self._device_info.product_model
@@ -648,7 +653,7 @@ class TuyaBLEDevice:
                         "%s: Sending device info request", self.address)
                     try:
                         device_info_payload = (
-                            b"\x00\xf3" if self.product_id == "hc7n0urm" else bytes(0)
+                            b"\x00\xf3" if self.is_tuyaos_fd50_lock else bytes(0)
                         )
                         if not await self._send_packet_while_connected(
                             TuyaBLECode.FUN_SENDER_DEVICE_INFO,
@@ -812,12 +817,12 @@ class TuyaBLEDevice:
             if packet_num == 0:
                 packet += self._pack_int(length)
                 packet_protocol_version = self._protocol_version
-                if code == TuyaBLECode.FUN_SENDER_DEVICE_INFO and self.product_id == "hc7n0urm":
+                if code == TuyaBLECode.FUN_SENDER_DEVICE_INFO and self.is_tuyaos_fd50_lock:
                     packet_protocol_version = 2
                 packet += pack(">B", packet_protocol_version << 4)
 
             chunk_mtu = GATT_MTU
-            if code == TuyaBLECode.FUN_SENDER_DEVICE_INFO and self.product_id == "hc7n0urm":
+            if code == TuyaBLECode.FUN_SENDER_DEVICE_INFO and self.is_tuyaos_fd50_lock:
                 # TuyaOS FD50 locks use MTU exchange and expect DEVICE_INFO in one write.
                 chunk_mtu = 244
             data_part = encrypted[
@@ -1103,7 +1108,7 @@ class TuyaBLEDevice:
         value:len.  Only safe configuration/status datapoints are surfaced for
         that lock; ambiguous lock-state events are intentionally ignored.
         """
-        if self.product_id == "hc7n0urm":
+        if self.is_tuyaos_fd50_lock:
             self._parse_raykube_datapoints_v4(data)
             return
 
