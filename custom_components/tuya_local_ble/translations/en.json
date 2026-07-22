@@ -162,6 +162,12 @@
         "child_lock": {
           "name": "Child Lock"
         },
+        "anti_lock_outside": {
+          "name": "Anti-lock outside"
+        },
+        "reverse_lock": {
+          "name": "Reverse lock"
+        },
         "window_check": {
           "name": "Window Check"
         },

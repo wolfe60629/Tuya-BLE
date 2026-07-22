@@ -175,6 +175,36 @@ mapping: dict[str, TuyaBLECategorySwitchMapping] = {
             ),
         }
     ),
+    "jtmspro": TuyaBLECategorySwitchMapping(
+        products={
+            "hdmgxrmp": [  # K13
+                TuyaBLESwitchMapping(
+                    dp_id=32,
+                    description=SwitchEntityDescription(
+                        key="reverse_lock",
+                        icon="mdi:lock-plus",
+                        entity_category=EntityCategory.CONFIG,
+                    ),
+                ),
+                TuyaBLESwitchMapping(
+                    dp_id=10,
+                    description=SwitchEntityDescription(
+                        key="child_lock",
+                        icon="mdi:account-child",
+                        entity_category=EntityCategory.CONFIG,
+                    ),
+                ),
+                TuyaBLESwitchMapping(
+                    dp_id=11,
+                    description=SwitchEntityDescription(
+                        key="anti_lock_outside",
+                        icon="mdi:shield-lock",
+                        entity_category=EntityCategory.CONFIG,
+                    ),
+                ),
+            ],
+        }
+    ),
     "szjqr": TuyaBLECategorySwitchMapping(
         products={
             **dict.fromkeys(
@@ -450,6 +480,13 @@ class TuyaBLESwitch(TuyaBLEEntity, SwitchEntity):
     @property
     def available(self) -> bool:
         """Return if entity is available."""
+        if self._device.product_id == "hdmgxrmp" and self._mapping.dp_id in (
+            10,
+            11,
+            32,
+        ):
+            # Sleepy BLE lock: allow config writes; connection is established on demand.
+            return True
         result = super().available
         if result and self._mapping.is_available:
             result = self._mapping.is_available(self, self._product)

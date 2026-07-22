@@ -1654,6 +1654,13 @@ class TuyaBLEDevice:
                         self._build_raykube_v4_enum_data(dp_id),
                         True,
                     )
+            elif set(datapoint_ids).issubset({10, 11, 32}):
+                for dp_id in datapoint_ids:
+                    await self._send_packet(
+                        TuyaBLECode.FUN_SENDER_DPS_V4,
+                        self._build_fd50_v4_bool_data(dp_id),
+                        True,
+                    )
             else:
                 _LOGGER.debug(
                     "%s: Skipping unsupported K13 datapoint write: %s",
@@ -1699,6 +1706,19 @@ class TuyaBLEDevice:
             raise TuyaBLEDataLengthError()
         return b"\x00\x00\x00\x00\x01" + bytes([dp_id]) + len(value).to_bytes(3, "big") + value
 
+    def _build_fd50_v4_bool_data(self, dp_id: int) -> bytes:
+        """Build a TuyaOS FD50 one-byte V4 boolean write."""
+        dp = self._datapoints[dp_id]
+        value = dp._get_value()
+        if len(value) != 1:
+            raise TuyaBLEDataLengthError()
+        return (
+            b"\x00\x00\x00\x00\x01"
+            + bytes([dp_id])
+            + len(value).to_bytes(3, "big")
+            + value
+        )
+
     async def _send_datapoints(self, datapoint_ids: list[int]) -> None:
         """Send new values of datapoints to the device."""
         if self.product_id == "hc7n0urm" and 6 in datapoint_ids:
@@ -1717,7 +1737,9 @@ class TuyaBLEDevice:
             # is known on sleepy battery locks.
             await self._send_datapoints_v3(datapoint_ids)
             return
-        if self.product_id == "hdmgxrmp" and set(datapoint_ids).issubset({31, 46, 62}):
+        if self.product_id == "hdmgxrmp" and set(datapoint_ids).issubset(
+            {10, 11, 31, 32, 46, 62}
+        ):
             # K13 FD50 sleepy lock: allow V4 command path before protocol_version
             # is known, same as Raykube.
             await self._send_datapoints_v3(datapoint_ids)

@@ -32,13 +32,20 @@ Replace `<local_key>` with the key from TinyTuya / Tuya IoT.
 |----|------|-------------------|
 | 8 | residual_electricity | Battery % sensor |
 | 9 | battery_state | Battery enum sensor |
+| 10 | child_lock | Config switch |
+| 11 | anti_lock_outside | Config switch |
 | 31 | beep_volume | Select (mute/normal) |
+| 32 | reverse_lock | Config switch |
 | 46 | manual_lock | Lock command |
 | 47 | lock_motor_state | Lock state |
-| 62 | unlock_phone_remote | Experimental unlock command |
+| 62 / 71 | unlock + ble_unlock_check | Remote unlock (challenge) |
+
+## Auto-lock
+
+This product's cloud DP schema has **no** `automatic_lock` / delay datapoint. That is why Smart Life shows auto-lock but will not let you change it — the firmware does not expose a setting. Home Assistant cannot add a real control for a DP that does not exist.
 
 ## Expectations
 
 - Requires BLE range (Pi adapter or Bluetooth proxy near the lock).
-- Battery / status are the first goals.
-- Remote unlock is experimental; `jtmspro` locks often need anti-replay / FD50 handling beyond a simple DP write.
+- After re-pairing in Smart Life, refresh `local_key` and `ble_unlock_check` in `devices.json` (they rotate).
+- Remote unlock needs a current `ble_unlock_check` value from Tuya cloud status.
